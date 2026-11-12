@@ -643,6 +643,7 @@ Loader::ResultStatus NCCHContainer::ReadRomFS(std::shared_ptr<RomFSReader>& romf
     // NCCH stores RomFS offsets and sizes in 0x200-byte media units.
     // The header fields are 32-bit, but their byte values can exceed 4 GiB.
     // Widen before multiplying to avoid truncating valid large RomFS images.
+    // Keep the resulting byte range in 64-bit arithmetic through bounds validation.
     const u64 romfs_offset =
         (static_cast<u64>(ncch_header.romfs_offset) * static_cast<u64>(block_size)) + 0x1000;
     const u64 romfs_size =
