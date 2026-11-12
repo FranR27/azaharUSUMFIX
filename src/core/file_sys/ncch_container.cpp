@@ -3,6 +3,7 @@
 // Refer to the LICENSE.txt file included.
 
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <span>
 #include <cryptopp/aes.h>
@@ -639,14 +640,22 @@ Loader::ResultStatus NCCHContainer::ReadRomFS(std::shared_ptr<RomFSReader>& romf
     if (!file || !file->IsOpen())
         return Loader::ResultStatus::Error;
 
-    u32 romfs_offset = (ncch_header.romfs_offset * block_size) + 0x1000;
-    u32 romfs_size = (ncch_header.romfs_size * block_size) - 0x1000;
+    // NCCH stores RomFS offsets and sizes in 0x200-byte media units.
+    // Widen before multiplying: a valid RomFS can exceed 4 GiB.
+    const u64 romfs_offset =
+        (static_cast<u64>(ncch_header.romfs_offset) * static_cast<u64>(block_size)) + 0x1000;
+    const u64 romfs_size =
+        (static_cast<u64>(ncch_header.romfs_size) * static_cast<u64>(block_size)) - 0x1000;
 
-    LOG_DEBUG(Service_FS, "RomFS offset:           0x{:08X}", romfs_offset);
-    LOG_DEBUG(Service_FS, "RomFS size:             0x{:08X}", romfs_size);
+    LOG_DEBUG(Service_FS, "RomFS offset:           0x{:016X}", romfs_offset);
+    LOG_DEBUG(Service_FS, "RomFS size:             0x{:016X}", romfs_size);
 
-    if (file->GetSize() < romfs_offset + romfs_size)
+    const u64 file_size = file->GetSize();
+    if (romfs_offset > file_size || romfs_size > file_size - romfs_offset ||
+        romfs_offset > std::numeric_limits<std::size_t>::max() ||
+        romfs_size > std::numeric_limits<std::size_t>::max()) {
         return Loader::ResultStatus::Error;
+    }
 
     // We reopen the file, to allow its position to be independent from file's
     std::unique_ptr<FileUtil::IOFileBase> romfs_file_inner;
@@ -657,7 +666,8 @@ Loader::ResultStatus NCCHContainer::ReadRomFS(std::shared_ptr<RomFSReader>& romf
 
     std::shared_ptr<RomFSReader> direct_romfs =
         std::make_shared<DirectRomFSReader>(std::make_unique<FileUtil::SubIOFile>(
-            std::move(romfs_file_inner), romfs_offset, romfs_size));
+            std::move(romfs_file_inner), static_cast<std::size_t>(romfs_offset),
+            static_cast<std::size_t>(romfs_size)));
 
     const auto path =
         fmt::format("{}mods/{:016X}/", FileUtil::GetUserPath(FileUtil::UserPath::LoadDir),
