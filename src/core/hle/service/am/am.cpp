@@ -325,10 +325,16 @@ void NCCHCryptoFile::Write(const u8* buffer, std::size_t length) {
                                                .seek_from = ncch_header.exefs_offset * kBlockSize});
             }
             if (ncch_header.romfs_size) {
+                // Keep ROMFS region arithmetic wide; the media-unit fields are u32,
+                // but their byte offsets and sizes can exceed 4 GiB.
+                const std::size_t romfs_offset =
+                    static_cast<std::size_t>(ncch_header.romfs_offset) * kBlockSize;
+                const std::size_t romfs_size =
+                    static_cast<std::size_t>(ncch_header.romfs_size) * kBlockSize;
                 regions.push_back(CryptoRegion{.type = CryptoRegion::ROMFS,
-                                               .offset = ncch_header.romfs_offset * kBlockSize,
-                                               .size = ncch_header.romfs_size * kBlockSize,
-                                               .seek_from = ncch_header.romfs_offset * kBlockSize});
+                                               .offset = romfs_offset,
+                                               .size = romfs_size,
+                                               .seek_from = romfs_offset});
             }
         }
 
